@@ -1,0 +1,207 @@
+<%- include("partials/header.ejs");%>
+
+    <main>
+        <div class="container ms-0">
+            <button onclick="toggleInput()" class="btn bg-primary mt-3 fw-bold">+ Add</button>
+
+            <!--add new book form card-->
+            <div class="card mt-3 d-none" id="newbookform">
+                <div class="card-body">
+                    <form class="d-flex" role="add-book" action="/submit" method="post">
+                        <div class="input-group">
+                            <span class="input-group-text" id="basic-addon1">Title</span>
+                            <input class="form-control me-2" type="text" placeholder="" aria-label="title"
+                                name="title" />
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text" id="basic-addon1">Description</span>
+                            <input class="form-control me-2" type="text" placeholder="" aria-label="description"
+                                name="description" />
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text" id="basic-addon1">ISBN</span>
+                            <input class="form-control me-2" type="text" placeholder="" aria-label="isbn" name="isbn" />
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text" id="basic-addon1">Publish Year</span>
+                            <input class="form-control me-2" type="text" placeholder="" aria-label="published_year"
+                                name="publish_year" />
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text" id="basic-addon1">Media Type</span>
+                            <input class="form-control me-2" type="text" placeholder="" aria-label="media_type"
+                                name="media_type" />
+                        </div>
+                        <button type="submit" class="btn btn-primary">Submit</button>
+                    </form>
+
+                </div>
+            </div>
+
+
+        </div>
+        </div>
+
+        </div>
+        <section id="main-table" class="w=100">
+            <div id="table-container" class="container-fluid ms-0 d-flex justify-content-center">
+                <% if(!locals.booklist || booklist.length===0){ %>
+                    <div class="card w-50">
+                        <div class="card-body bg-danger">
+                            NO Data Found
+                        </div>
+                    </div>
+                    <%}else{%>
+                        <table class="table table-striped mt-3 w-100">
+                            <thead>
+                                <tr>
+                                    <th scope="col">#</th>
+                                    <th scope="col">Book Title</th>
+                                    <th scope="col">Read Status</th>
+                                    <th scope="col">Description</th>
+                                    <th scope="col">Media Type</th>
+                                </tr>
+                            </thead>
+                            <tbody class="table-group-divider">
+
+                                <%booklist.forEach((book, index)=> {%>
+                                    <tr data-book-id="<%=book.book_id%>" data-book-name="<%=book.title%>">
+                                        <th scope="row">
+                                            <%=index + 1%>
+                                        </th>
+                                        <td>
+                                            <%=book.title%>
+                                        </td>
+                                        <td>
+                                            <%=book.read_status%>
+                                        </td>
+                                        <td>
+                                            <%=book.description%>
+                                        </td>
+                                        <td>
+                                            <%=book.media_type%>
+                                        </td>
+                                        <td>
+                                            <div class="dropdown">
+                                                <button class="btn btn-secondary dropdown-toggle" type="button"
+                                                    data-bs-toggle="dropdown" aria-expanded="false">
+                                                    Actions
+                                                </button>
+                                                <ul class="actions-drop-down dropdown-menu">
+                                                    <li><a class="dropdown-item" click="handleAction(book.title,true)"
+                                                            href="#" data-action="read">mark as
+                                                            read</a></li>
+                                                    <li><a class="dropdown-item" href="#" data-action="unread">mark as
+                                                            unread</a></li>
+                                                    <li><a class="dropdown-item" href="#" data-action="cover">open
+                                                            cover</a></li>
+                                                </ul>
+                                            </div>
+                                        </td>
+
+                                    </tr>
+                                    <%});%>
+                            </tbody>
+                        </table>
+                        <%}%>
+            </div>
+        </section>
+
+
+    </main>
+
+
+    <footer class=" fixed-bottom p-3 bg-body-tertiary">Abdullah Mohammed Adil (or Adel)
+    </footer>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+
+        document.addEventListener("DOMContentLoaded", () => {
+            // Use event delegation on the table to handle all dropdowns
+            document.addEventListener("click", (e) => {
+                if (e.target.classList.contains('dropdown-item')) {
+                    e.preventDefault();
+                    const action = e.target.getAttribute('data-action');
+                    const bookId = e.target.closest('tr').getAttribute('data-book-id')
+                    const bookName = e.target.closest('tr').getAttribute('data-book-name')
+                    handleAction(action, bookId, bookName);
+                }
+            })
+        })
+        let show = false
+
+        // Helper function to toggle table visibility
+        const toggleInput = () => {
+            show = !show;  // Update the show variable
+            const tableContainer = document.getElementById('newbookform');
+            if (show) {
+                tableContainer.classList.remove('d-none');
+            } else {
+                tableContainer.classList.add('d-none');
+            }
+        }
+
+        const handleAction = (action, bookId, bookName) => {
+            switch (action) {
+                case 'read':
+                    fetch("/read_status", {
+                        method: "PATCH",
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ bookId: bookId, status: true })
+                    })
+                        .then(response => {
+                            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                            return response.json();
+                        })
+                        .then(() => location.href = "/")
+                        .catch(error => console.error('Error:', error));
+                    break;
+
+                case 'unread':
+                    fetch("/read_status", {
+                        method: "PATCH",
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ bookId: bookId, status: false })
+                    })
+                        .then(response => {
+                            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                            return response.json();
+                        })
+                        .then(() => location.href = "/")
+                        .catch(error => console.error('Error:', error));
+                    break;
+
+                case 'cover':
+                    //search for book id using book name
+
+                    searchParam = bookName.replaceAll(' ', '+');
+                    fetch(`https://openlibrary.org/search.json?title=${searchParam}`, {
+                        method: "GET",
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                        .then(response => {
+                            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                            return response.json();
+                        }).then(data => {
+                            console.log(data);
+                            const keyvalue = data.docs[0].cover_edition_key;
+
+                            window.open(`https://covers.openlibrary.org/b/olid/${keyvalue}-M.jpg`)
+                            console.log(`https://covers.openlibrary.org/b/olid/${keyvalue}-M.jpg`)
+                        }
+                        )
+                    break;
+
+            }
+        }
+
+    </script>
+    </body>
+
+    </html>
