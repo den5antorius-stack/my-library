@@ -5,6 +5,7 @@ import bcrypt from "bcrypt";
 import passport from "passport";
 import { Strategy } from "passport-local";
 import session from "express-session";
+import GoogleStrategy from "passport-google-oauth2";
 //env import
 dotenv.config();
 
@@ -74,7 +75,6 @@ app.get("/library", requireAuth, async (req, res) => {
       "SELECT book_id, title, description, read_status, media_type FROM books ORDER BY book_id DESC",
     );
     booklist = result.rows;
-    console.log(booklist);
   } catch (error) {
     console.error("ERROR: ", error);
   }
@@ -98,7 +98,6 @@ app.get("/getolid/:bookName", requireAuth, async (req, res) => {
 //submit new book
 app.post("/submit", requireAuth, async (req, res) => {
   const response = req.body;
-  console.log(response);
   const title = response.title;
   const description = response.description;
   const read_status = false;
@@ -195,6 +194,21 @@ app.get("/logout", (req, res, next) => {
   });
 });
 
+//
+app.get(
+  "/auth/google",
+  passport.authenticate("google", {
+    scope: ["profile", "email"],
+  }),
+);
+app.get(
+  "/auth/google/library",
+  passport.authenticate("google", {
+    successRedirect: "/library",
+    failureRedirect: "/",
+  }),
+);
+
 //passport local login strategy middleware
 passport.use(
   "local",
@@ -222,6 +236,38 @@ passport.use(
           });
         } else {
           return cb(null, false, { message: "check email or password" });
+        }
+      } catch (err) {
+        return cb(err);
+      }
+    },
+  ),
+);
+
+//google login strategy
+passport.use(
+  "google",
+  new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: process.env.REDIRECT_URI,
+      userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",
+      passReqToCallback: true,
+    },
+    async (req, accessToken, refreshToken, profile, cb) => {
+      try {
+        const result = await db.query("SELECT * FROM users WHERE email=$1", [
+          profile.email,
+        ]);
+        if (result.rows.length == 0) {
+          const newUser = await db.query(
+            "INSERT INTO users (name,email,password) VALUES ($1,$2,$3)RETURNING *",
+            [profile.displayName, profile.email, "googleAuth"],
+          );
+          return cb(null, newUser.rows[0]);
+        } else {
+          return cb(null, result.rows[0]);
         }
       } catch (err) {
         return cb(err);
