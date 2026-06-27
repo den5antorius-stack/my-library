@@ -67,6 +67,7 @@ app.get("/login", async (req, res) => {
 
 //get library page route
 app.get("/library", requireAuth, async (req, res) => {
+  res.set("Cache-Control", "no-store");
   let booklist = [];
   try {
     const result = await db.query(
