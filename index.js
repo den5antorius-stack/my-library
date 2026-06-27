@@ -1,21 +1,43 @@
 import express from "express";
 import dotenv from "dotenv";
 import pg from "pg";
-
+import bcrypt from "bcrypt";
+import passport from "passport";
+import { Strategy } from "passport-local";
+import session from "express-session";
 //env import
 dotenv.config();
 
 // port and app
 const app = express();
-const Port = process.env.Port;
+const Port = process.env.PORT;
+const saltRounds = 10;
 
 //middleware
 
+//session cookies middleware
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: true,
+      maxAge: 1000 * 60 * 60 * 24,
+      sameSite: "lax",
+    },
+  }),
+);
+
+app.use(passport.initialize());
+//passport session middleware
+app.use(passport.session());
+
 app.use(express.static("public")); //get styles
 app.use(express.static("node_modules")); //serve npm packages
-app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
+app.use(express.json());
 app.set("view engine", "ejs"); //set ejs template engine
 app.set("views", "./views"); //set views directory
 
@@ -28,8 +50,23 @@ const db = new pg.Pool({
   port: process.env.local_db_port,
 });
 
-//get home page route
+//get home page
 app.get("/", async (req, res) => {
+  res.render("home");
+});
+
+//get register page
+app.get("/register", async (req, res) => {
+  res.render("register");
+});
+
+//get login page
+app.get("/login", async (req, res) => {
+  res.render("login");
+});
+
+//get library page route
+app.get("/library", requireAuth, async (req, res) => {
   let booklist = [];
   try {
     const result = await db.query(
@@ -40,12 +77,13 @@ app.get("/", async (req, res) => {
   } catch (error) {
     console.error("ERROR: ", error);
   }
-  res.render("index", { booklist: booklist });
+  res.render("library", { booklist: booklist });
 });
 
-app.get("/getolid", async (req, res) => {
+//getting stored olid to reduce the requests on book details API in the openlibrary API
+app.get("/getolid/:bookName", requireAuth, async (req, res) => {
   const title = req.params.bookName;
-  const response = [];
+  let response = [];
   try {
     response = (
       await db.query("SELECT olid FROM books WHERE title=$1", [title])
@@ -57,7 +95,7 @@ app.get("/getolid", async (req, res) => {
 });
 
 //submit new book
-app.post("/submit", async (req, res) => {
+app.post("/submit", requireAuth, async (req, res) => {
   const response = req.body;
   console.log(response);
   const title = response.title;
@@ -67,18 +105,19 @@ app.post("/submit", async (req, res) => {
   const publishYear = Number(response.publish_year) || null;
   const mediaType = response.media_type;
   try {
-    db.query(
+    await db.query(
       "INSERT INTO books (title,description,isbn,read_status,publish_year,media_type) VALUES ($1,$2,$3,$4,$5,$6)",
       [title, description, isbn, read_status, publishYear, mediaType],
     );
-    res.redirect("/");
+
+    res.redirect("/library");
   } catch (error) {
     console.log("ERROR: ", error);
   }
 });
 
 //update read status (read or unread)
-app.patch("/read_status", async (req, res) => {
+app.patch("/read_status", requireAuth, async (req, res) => {
   const bookId = req.body.bookId;
   const status = req.body.status;
 
@@ -95,7 +134,7 @@ app.patch("/read_status", async (req, res) => {
 });
 
 //save olid to db
-app.patch("/saveolid", async (req, res) => {
+app.patch("/saveolid", requireAuth, async (req, res) => {
   const bookId = req.body.bookId;
   const olid = req.body.olid;
   try {
@@ -109,6 +148,107 @@ app.patch("/saveolid", async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+//user register
+app.post("/register", async (req, res) => {
+  const userName = req.body.userName;
+  const userEmail = req.body.userEmail;
+
+  try {
+    const userPassword = await bcrypt.hash(req.body.userPassword, saltRounds);
+    const result = await db.query(
+      "INSERT INTO users (name,email,password) VALUES($1,$2,$3)",
+      [userName, userEmail, userPassword],
+    );
+    res.redirect("/login");
+  } catch (err) {
+    if (err.code === "23505") {
+      res.status(400).json("Email already registered");
+    } else {
+      res.status(500).json("Error: user unable to register");
+    }
+  }
+});
+
+//user login
+app.post(
+  "/login",
+  passport.authenticate("local", {
+    successRedirect: "/library",
+    failureRedirect: "/login",
+  }),
+);
+
+//cookie consent this is Work In Progress
+app.post("/accept-cookies", (req, res) => {
+  req.session.consentGiven = true; // first write -> session now gets created
+  res.sendStatus(200);
+});
+
+app.get("/logout", (req, res, next) => {
+  req.logout((err) => {
+    if (err) {
+      return next(err);
+    }
+    res.redirect("/login");
+  });
+});
+
+//passport local login strategy middleware
+passport.use(
+  "local",
+  new Strategy(
+    { usernameField: "userEmail", passwordField: "userPassword" },
+    async function (username, password, cb) {
+      try {
+        const result = await db.query(
+          "SELECT email,password FROM users WHERE email=$1",
+          [username],
+        );
+        if (result.rows.length > 0) {
+          const user = result.rows[0];
+          const passwordHashed = user.password;
+          bcrypt.compare(password, passwordHashed, (err, valid) => {
+            if (err) {
+              return cb(err);
+            } else {
+              if (valid) {
+                return cb(null, user);
+              } else {
+                return cb(null, false);
+              }
+            }
+          });
+        } else {
+          return cb(null, false, { message: "check email or password" });
+        }
+      } catch (err) {
+        return cb(err);
+      }
+    },
+  ),
+);
+
+passport.serializeUser((user, cb) => cb(null, user.email));
+
+passport.deserializeUser(async (email, cb) => {
+  try {
+    const result = await db.query(
+      "SELECT id, name, email FROM users WHERE email=$1",
+      [email],
+    );
+    cb(null, result.rows[0]);
+  } catch (err) {
+    cb(err);
+  }
+});
+
+function requireAuth(req, res, next) {
+  if (req.isAuthenticated()) {
+    return next();
+  }
+  res.redirect("/login");
+}
 
 //app activate
 app.listen(Port, () => {
