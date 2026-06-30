@@ -5,7 +5,9 @@ import bcrypt from "bcrypt";
 import passport from "passport";
 import { Strategy } from "passport-local";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import GoogleStrategy from "passport-google-oauth2";
+import { v7 as uuidv7 } from "uuid";
 //env import
 dotenv.config();
 
@@ -14,11 +16,26 @@ const app = express();
 const Port = process.env.PORT;
 const saltRounds = 10;
 
+//db connection
+const db = new pg.Pool({
+  user: process.env.local_db_user,
+  password: process.env.local_db_password,
+  host: process.env.local_db_host,
+  database: process.env.local_db_name,
+  port: process.env.local_db_port,
+});
+
+const PgSession = connectPgSimple(session);
+
 //middleware
 
 //session cookies middleware
 app.use(
   session({
+    store: new PgSession({
+      pool: db,
+      tableName: "session",
+    }),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -42,15 +59,6 @@ app.use(express.json());
 app.set("view engine", "ejs"); //set ejs template engine
 app.set("views", "./views"); //set views directory
 
-//db connection
-const db = new pg.Pool({
-  user: process.env.local_db_user,
-  password: process.env.local_db_password,
-  host: process.env.local_db_host,
-  database: process.env.local_db_name,
-  port: process.env.local_db_port,
-});
-
 //get home page
 app.get("/", async (req, res) => {
   res.render("home");
@@ -69,10 +77,12 @@ app.get("/login", async (req, res) => {
 //get library page route
 app.get("/library", requireAuth, async (req, res) => {
   res.set("Cache-Control", "no-store");
+
   let booklist = [];
   try {
     const result = await db.query(
-      "SELECT book_id, title, description, read_status, media_type FROM books ORDER BY book_id DESC",
+      "SELECT * FROM books WHERE uuid=$1 ORDER BY book_id DESC",
+      [req.user.uuid],
     );
     booklist = result.rows;
   } catch (error) {
@@ -97,17 +107,28 @@ app.get("/getolid/:bookName", requireAuth, async (req, res) => {
 
 //submit new book
 app.post("/submit", requireAuth, async (req, res) => {
-  const response = req.body;
-  const title = response.title;
-  const description = response.description;
+  const requestBody = req.body;
+  const title = requestBody.title;
+  const description = requestBody.description;
   const read_status = false;
-  const isbn = response.isbn || null;
-  const publishYear = Number(response.publish_year) || null;
-  const mediaType = response.media_type;
+  const isbn = requestBody.isbn || null;
+  const publishYear = Number(requestBody.publish_year) || null;
+  const mediaType = requestBody.media_type;
+  const author = requestBody.author;
+  const useruuid = req.user.uuid;
   try {
     await db.query(
-      "INSERT INTO books (title,description,isbn,read_status,publish_year,media_type) VALUES ($1,$2,$3,$4,$5,$6)",
-      [title, description, isbn, read_status, publishYear, mediaType],
+      "INSERT INTO books (title,description,isbn,read_status,publish_year,media_type,author,uuid) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+      [
+        title,
+        description,
+        isbn,
+        read_status,
+        publishYear,
+        mediaType,
+        author,
+        useruuid,
+      ],
     );
 
     res.redirect("/library");
@@ -157,8 +178,8 @@ app.post("/register", async (req, res) => {
   try {
     const userPassword = await bcrypt.hash(req.body.userPassword, saltRounds);
     const result = await db.query(
-      "INSERT INTO users (name,email,password) VALUES($1,$2,$3)",
-      [userName, userEmail, userPassword],
+      "INSERT INTO users (name,email,password,uuid) VALUES($1,$2,$3,$4)",
+      [userName, userEmail, userPassword, uuidv7()],
     );
     res.redirect("/login");
   } catch (err) {
@@ -217,12 +238,13 @@ passport.use(
     async function (username, password, cb) {
       try {
         const result = await db.query(
-          "SELECT email,password FROM users WHERE email=$1",
+          "SELECT email,password ,uuid FROM users WHERE email=$1",
           [username],
         );
         if (result.rows.length > 0) {
           const user = result.rows[0];
           const passwordHashed = user.password;
+
           bcrypt.compare(password, passwordHashed, (err, valid) => {
             if (err) {
               return cb(err);
@@ -262,8 +284,8 @@ passport.use(
         ]);
         if (result.rows.length == 0) {
           const newUser = await db.query(
-            "INSERT INTO users (name,email,password) VALUES ($1,$2,$3)RETURNING *",
-            [profile.displayName, profile.email, "googleAuth"],
+            "INSERT INTO users (name,email,password,uuid) VALUES ($1,$2,$3,$4)RETURNING *",
+            [profile.displayName, profile.email, "googleAuth", uuidv7()],
           );
           return cb(null, newUser.rows[0]);
         } else {
@@ -276,12 +298,12 @@ passport.use(
   ),
 );
 
-passport.serializeUser((user, cb) => cb(null, user.email));
+passport.serializeUser(async (user, cb) => cb(null, user.email));
 
 passport.deserializeUser(async (email, cb) => {
   try {
     const result = await db.query(
-      "SELECT id, name, email FROM users WHERE email=$1",
+      "SELECT uuid, name, email FROM users WHERE email=$1",
       [email],
     );
     cb(null, result.rows[0]);

@@ -14,6 +14,11 @@
                                 name="title" />
                         </div>
                         <div class="input-group">
+                            <span class="input-group-text" id="basic-addon1">Author</span>
+                            <input class="form-control me-2" type="text" placeholder="" aria-label="description"
+                                name="author" />
+                        </div>
+                        <div class="input-group">
                             <span class="input-group-text" id="basic-addon1">Description</span>
                             <input class="form-control me-2" type="text" placeholder="" aria-label="description"
                                 name="description" />
@@ -71,6 +76,9 @@
                                         </th>
                                         <td>
                                             <%=book.title%>
+                                        </td>
+                                        <td>
+                                            <%=book.author%>
                                         </td>
                                         <td>
                                             <%=book.read_status%>
