@@ -1,0 +1,9 @@
+:root {
+  --header-height: 80px; /* Adjust based on your actual navbar height */
+  --footer-height: 60px; /* Adjust based on your actual footer height */
+}
+
+main {
+  height: calc(100vh - var(--header-height) - var(--footer-height));
+  overflow-y: auto; /* Ensure main itself doesn't scroll, but its children do if needed */
+}
