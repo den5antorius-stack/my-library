@@ -1,6 +1,6 @@
 <%- include("partials/header.ejs");%>
 
-    <main>
+    <main class="d-flex flex-column">
         <div class="container ms-0">
             <button onclick="toggleInput()" class="btn bg-primary mt-3 fw-bold">+ Add</button>
 
@@ -48,8 +48,8 @@
         </div>
 
         </div>
-        <section id="main-table" class="w=100">
-            <div id="table-container" class="container-fluid ms-0 d-flex justify-content-center">
+        <section id="main-table" class="container-fluid flex-grow-1 overflow-y-auto p-0 m-0">
+            <div id="table-container" class="container-fluid ms-0 d-flex justify-content-center mb-5">
                 <% if(!locals.booklist || booklist.length===0){ %>
                     <div class="card w-50">
                         <div class="card-body bg-danger">
@@ -58,7 +58,7 @@
                     </div>
                     <%}else{%>
                         <table class="table table-striped mt-3 w-100">
-                            <thead>
+                            <thead class="sticky-top">
                                 <tr>
                                     <th scope="col">#</th>
                                     <th scope="col">Book Title</th>
