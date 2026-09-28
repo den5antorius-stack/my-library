@@ -31,4 +31,4 @@ using pnpm:
 </br>
 
 <h1>Contact</h1>
-email: abdullah.adil@gmail.com
+email: abdullah.adil1098@gmail.com
